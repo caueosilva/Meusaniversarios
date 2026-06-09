@@ -50,20 +50,18 @@ def get_updates(offset=None):
         return []
 
 def pular_mensagens_antigas():
-    """Ignora todas as mensagens que chegaram antes do bot iniciar."""
     updates = get_updates()
     if not updates:
         return None
     ultimo = updates[-1]["update_id"]
-    print(f"Pulando {len(updates)} mensagens antigas. Último offset: {ultimo}")
+    print(f"Pulando {len(updates)} mensagens antigas.")
     return ultimo + 1
 
-# ── Comandos ───────────────────────────────────────────────────────────────
+# ── Comandos Telegram ──────────────────────────────────────────────────────
 def cmd_add(args, chat_id):
     if len(args) < 2:
         enviar_mensagem("Uso: /add Nome DD/MM\nExemplo: /add Maria 23/04", chat_id)
         return
-    # Último argumento é a data, o resto é o nome
     nome = " ".join(args[:-1])
     data_str = args[-1]
     partes = data_str.split("/")
@@ -115,23 +113,45 @@ def cmd_del(args, chat_id):
         enviar_mensagem(f"✅ {' '.join(args)} removido.", chat_id)
 
 def cmd_ajuda(chat_id):
-    texto = (
+    enviar_mensagem(
         "🎂 Bot de Aniversários\n\n"
         "/add Nome DD/MM — Adicionar\n"
         "Ex: /add Maria 23/04\n\n"
         "/lista — Ver todos\n\n"
         "/del Nome — Remover\n"
         "Ex: /del Maria\n\n"
-        "/ajuda — Ver comandos"
+        "/teste — Simular aviso\n\n"
+        "/ajuda — Ver comandos",
+        chat_id
     )
-    enviar_mensagem(texto, chat_id)
+
+def cmd_teste(chat_id):
+    amigos = carregar_amigos()
+    if not amigos:
+        enviar_mensagem("Nenhum amigo cadastrado ainda.", chat_id)
+        return
+    hoje = datetime.date.today()
+    def dias_para(a):
+        m, d = int(a["data"].split("-")[1]), int(a["data"].split("-")[2])
+        prox = datetime.date(hoje.year, m, d)
+        if prox < hoje:
+            prox = datetime.date(hoje.year + 1, m, d)
+        return (prox - hoje).days
+    proximo = sorted(amigos, key=dias_para)[0]
+    nome = proximo.get("apelido") or proximo["nome"]
+    enviar_mensagem(
+        f"🔔 Isso é um TESTE:\n\n"
+        f"🎂 Aniversário hoje!\n\n"
+        f"🎉 {proximo['nome']} faz aniversário hoje!\n"
+        f"Não esqueça de mandar uma mensagem para {nome}!",
+        chat_id
+    )
 
 # ── Loop de comandos ───────────────────────────────────────────────────────
 def ouvir_comandos():
     print("Iniciando... pulando mensagens antigas.")
     offset = pular_mensagens_antigas()
     print(f"Pronto! Ouvindo a partir do offset {offset}")
-
     while True:
         try:
             updates = get_updates(offset)
@@ -142,15 +162,16 @@ def ouvir_comandos():
                 chat_id = str(msg.get("chat", {}).get("id", ""))
                 if not texto or not chat_id:
                     continue
-                print(f"Mensagem recebida: '{texto}' de {chat_id}")
+                print(f"Mensagem: '{texto}' de {chat_id}")
                 partes = texto.split()
                 cmd = partes[0].lower().split("@")[0]
                 args = partes[1:]
-                if cmd == "/add":       cmd_add(args, chat_id)
-                elif cmd == "/lista":   cmd_lista(chat_id)
-                elif cmd == "/del":     cmd_del(args, chat_id)
+                if cmd == "/add":           cmd_add(args, chat_id)
+                elif cmd == "/lista":        cmd_lista(chat_id)
+                elif cmd == "/del":          cmd_del(args, chat_id)
+                elif cmd == "/teste":        cmd_teste(chat_id)
                 elif cmd in ("/ajuda", "/start"): cmd_ajuda(chat_id)
-                else: enviar_mensagem("Comando não reconhecido. Use /ajuda para ver os comandos.", chat_id)
+                else: enviar_mensagem("Comando não reconhecido. Use /ajuda.", chat_id)
         except Exception as e:
             print(f"Erro no loop: {e}")
         time.sleep(2)
@@ -180,14 +201,79 @@ def verificar_aniversarios():
             print(f"Erro verificação: {e}")
         time.sleep(30)
 
-# ── Servidor web ───────────────────────────────────────────────────────────
+# ── Servidor web com API ───────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args): pass
-    def do_GET(self):
+
+    def send_cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
+        self.send_cors()
         self.end_headers()
-        self.wfile.write(b"Bot rodando!")
+
+    def do_GET(self):
+        if self.path == "/amigos":
+            body = json.dumps(carregar_amigos(), ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/horario":
+            body = json.dumps({"horario": HORARIO}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(b"Bot de Aniversarios rodando!")
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length)
+        if self.path == "/amigos":
+            try:
+                amigo = json.loads(body)
+                amigos = carregar_amigos()
+                amigos.append(amigo)
+                salvar_amigos(amigos)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_cors()
+                self.end_headers()
+                self.wfile.write(b'{"ok":true}')
+            except Exception as e:
+                self.send_response(400)
+                self.send_cors()
+                self.end_headers()
+                self.wfile.write(str(e).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_DELETE(self):
+        if self.path.startswith("/amigos/"):
+            amigo_id = self.path.split("/amigos/")[1]
+            amigos = carregar_amigos()
+            novos = [a for a in amigos if a["id"] != amigo_id]
+            salvar_amigos(novos)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(b'{"ok":true}')
+        else:
+            self.send_response(404)
+            self.end_headers()
 
 if __name__ == "__main__":
     threading.Thread(target=ouvir_comandos, daemon=True).start()
