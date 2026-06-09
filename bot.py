@@ -63,8 +63,9 @@ def cmd_add(args, chat_id):
     if len(args) < 2:
         enviar_mensagem("Uso: /add Nome DD/MM\nExemplo: /add Maria 23/04", chat_id)
         return
-    nome = args[0]
-    data_str = args[1]
+    # Último argumento é a data, o resto é o nome
+    nome = " ".join(args[:-1])
+    data_str = args[-1]
     partes = data_str.split("/")
     if len(partes) < 2:
         enviar_mensagem("Data inválida. Use DD/MM. Exemplo: 23/04", chat_id)
