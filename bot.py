@@ -33,11 +33,11 @@ def enviar_mensagem(texto, chat_id=None):
 
 def get_updates(offset=None):
     url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
-    params = {"timeout": 30}
+    params = {"timeout": 5}
     if offset:
         params["offset"] = offset
     try:
-        res = requests.get(url, params=params, timeout=35)
+        res = requests.get(url, params=params, timeout=10)
         return res.json().get("result", [])
     except:
         return []
@@ -151,7 +151,7 @@ def ouvir_comandos():
                 cmd_del(args, chat_id)
             elif cmd == "/ajuda" or cmd == "/start":
                 cmd_ajuda(chat_id)
-        time.sleep(1)
+        time.sleep(2)
 
 # ── Verificação diária ─────────────────────────────────────────────────────
 ultimo_aviso = {}
