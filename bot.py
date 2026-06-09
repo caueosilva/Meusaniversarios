@@ -231,11 +231,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         else:
+            html = open("index.html", "rb").read()
             self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_cors()
             self.end_headers()
-            self.wfile.write(b"Bot de Aniversarios rodando!")
+            self.wfile.write(html)
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
